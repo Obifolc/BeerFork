@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>BeerFork</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<style>
+body {
+  margin:0;
+  background:#050510;
+  overflow:hidden;
+  touch-action:none;
+}
+
+#frame {
+  position: absolute;
+  inset: 3px; /* 3px dai bordi dello schermo */
+  border:5px solid #ffbe0b;
+  border-radius:24px;
+  box-shadow:0 0 60px rgba(255,190,11,0.6);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:#050510;
+}
+
+canvas {
+  width:100%;
+  height:100%;
+  border-radius:16px;
+  display:block;
+}
+
+</style>
+</head>
+
+<body>
+  
+<div id="frame">
+<canvas id="game" width="400" height="600"></canvas>
+</div>
+<audio id="bgMusic" loop>
+  <source src="suono.mp3" type="audio/mpeg">
+  Il tuo browser non supporta l'audio.
+</audio>
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+const W=canvas.width;
+const H=canvas.height;
+
+// ───── STATES ─────
+const STATE={START:0,PLAY:1,OVER:2};
+let gameState=STATE.START;
+
+// ───── COLORS ─────
+const COLORS={
+  bg1:"#70193D",
+  bg2:"#010101",
+  marble:"rgba(255,255,255,0.05)",
+  platform1:"#800020",
+  platform2:"#010101",
+  platformGlow:"rgba(255,255,255,0.3)",
+  player:"#c3c3c3",
+  beer:"#ffbe0b"
+};
+
+// ───── LOGHI ─────
+const logoStart = new Image();
+logoStart.src = "beerforkcompleto.png";
+
+const logoSmall = new Image();
+logoSmall.src = "logobeerfork.png";
+
+// ───── PLAYER SPRITE ─────
+const playerImg = new Image();
+playerImg.src = "pg.png";
+
+// Assicurati che il player sia caricato prima di partire
+playerImg.onload = () => {
+  // Ora l'immagine è pronta, puoi partire con il loop
+  loop();
+};
+
+
+// ───── PLAYER (BASE IDENTICA) ─────
+const player={
+  x:W/2,
+  y:H-120,
+  r:14,            // lasciato per logica originale
+  w:48,
+  h:48,
+  vy:0,
+  jump:-13,
+  dir:1
+};
+
+const gravity=0.7;
+
+// ───── WORLD ─────
+let platforms=[];
+let beers=[];
+let particles=[];
+let score=0;
+
+// ───── TOUCH DRAG ─────
+let dragging=false;
+let dragOffsetX=0;
+
+// ───── BACKGROUND ─────
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,COLORS.bg1);
+  g.addColorStop(1,COLORS.bg2);
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,H);
+
+  for(let i=0;i<20;i++){
+    ctx.strokeStyle=COLORS.marble;
+    ctx.beginPath();
+    ctx.moveTo(Math.random()*W,Math.random()*H);
+    ctx.lineTo(Math.random()*W,Math.random()*H);
+    ctx.stroke();
+  }
+}
+
+// ───── START SCREEN ─────
+function drawStart(){
+  drawBackground();
+
+  ctx.save();
+  ctx.shadowColor=COLORS.beer;
+  ctx.shadowBlur=10;
+  ctx.drawImage(logoStart,W/2-130,110,260,140);
+  ctx.restore();
+
+  ctx.fillStyle=COLORS.bg1;
+  ctx.shadowColor=COLORS.bg2;
+  ctx.shadowBlur=10;
+  ctx.fillRect(W/2-80,320,160,50);
+  ctx.shadowBlur=0;
+
+  ctx.fillStyle="#fff";
+  ctx.font="20px sans-serif";
+  ctx.textAlign="center";
+  ctx.fillText("START",W/2,353);
+}
+
+// ───── DRAW PLAYER (SPRITE + FLIP) ─────
+function drawPlayer(){
+  ctx.save();
+  ctx.shadowColor=COLORS.player;
+  ctx.shadowBlur=10;
+  ctx.translate(player.x,player.y);
+  ctx.scale(player.dir,1);
+  ctx.drawImage(
+    playerImg,
+    -player.w/2,
+    -player.h/2,
+    player.w,
+    player.h
+  );
+  ctx.restore();
+}
+
+// ───── PLATFORM (ORIGINALE) ─────
+function drawPlatform(p){
+  p.pulse+=0.05;
+  const pulse=Math.sin(p.pulse)*2;
+
+  const grad=ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);
+  grad.addColorStop(0,COLORS.platform1);
+  grad.addColorStop(1,COLORS.platform2);
+
+  ctx.save();
+  ctx.shadowColor=COLORS.platformGlow;
+  ctx.shadowBlur=10;
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.roundRect(p.x,p.y-pulse*0.3,p.w,p.h+pulse,6);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ───── BEER (ORIGINALE) ─────
+function drawBeer(b){
+  ctx.save();
+  ctx.shadowColor=COLORS.beer;
+  ctx.shadowBlur=10;
+  ctx.fillStyle=COLORS.beer;
+  ctx.beginPath();
+  ctx.roundRect(b.x-6,b.y-10,12,20,4);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ───── PARTICLES (ORIGINALE) ─────
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.fillStyle="rgba(255,220,120,0.9)";
+    ctx.shadowColor=COLORS.beer;
+    ctx.shadowBlur=10;
+    ctx.fillRect(p.x,p.y,3,3);
+    ctx.shadowBlur=0;
+  });
+}
+
+// ───── SPAWN PLATFORM (ORIGINALE) ─────
+function spawnPlatform(y){
+  platforms.push({
+    x:Math.random()*(W-100),
+    y,
+    w:90,
+    h:14,
+    dx:Math.random()<0.35?(Math.random()>0.5?1.2:-1.2):0,
+    pulse:Math.random()*Math.PI*2
+  });
+
+  if(Math.random()<0.6){
+    beers.push({
+      x:platforms.at(-1).x+45,
+      y:y-25,
+      r:8
+    });
+  }
+}
+
+// ───── RESET (ORIGINALE) ─────
+function resetGame(){
+  player.x=W/2;
+  player.y=H-120;
+  player.vy=0;
+  score=0;
+  platforms=[{x:W/2-60,y:H-60,w:120,h:14,dx:0,pulse:0}];
+  beers=[];
+  particles=[];
+  gameState=STATE.PLAY;
+}
+
+// ───── UPDATE (ORIGINALE + ADATTAMENTO SPRITE) ─────
+function update(){
+  if(gameState!==STATE.PLAY) return;
+
+  player.vy+=gravity;
+  player.y+=player.vy;
+
+  platforms.forEach(p=>{
+    p.x+=p.dx;
+    if(p.x<0||p.x+p.w>W) p.dx*=-1;
+
+    if(
+      player.vy>0 &&
+      player.x>p.x &&
+      player.x<p.x+p.w &&
+      player.y+player.h/2>p.y &&
+      player.y+player.h/2<p.y+p.h
+    ){
+      player.vy=player.jump;
+
+      for(let i=0;i<8;i++){
+        particles.push({
+          x:player.x,
+          y:p.y,
+          vx:(Math.random()-0.5)*3,
+          vy:-Math.random()*3,
+          life:25
+        });
+      }
+    }
+  });
+
+  beers=beers.filter(b=>{
+    const hit =
+      Math.abs(player.x-b.x)<player.w/2+b.r &&
+      Math.abs(player.y-b.y)<player.h/2+b.r;
+
+    if(hit){
+      score+=10;
+      for(let i=0;i<12;i++){
+        particles.push({
+          x:b.x,y:b.y,
+          vx:(Math.random()-0.5)*4,
+          vy:(Math.random()-0.5)*4,
+          life:30
+        });
+      }
+    }
+    return !hit;
+  });
+
+  particles=particles.filter(p=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.life--;
+    return p.life>0;
+  });
+
+  if(player.y<H/2){
+    const dy=H/2-player.y;
+    player.y=H/2;
+    platforms.forEach(p=>p.y+=dy);
+    beers.forEach(b=>b.y+=dy);
+  }
+
+  platforms=platforms.filter(p=>p.y<H+60);
+  beers=beers.filter(b=>b.y<H+60);
+
+  let highest=Math.min(...platforms.map(p=>p.y));
+  while(highest>-80){
+    spawnPlatform(highest-80);
+    highest-=80;
+  }
+
+  if(player.y-player.h/2>H){
+    gameState=STATE.OVER;
+  }
+}
+
+// ───── DRAW ─────
+function draw(){
+  if(gameState===STATE.START){ drawStart(); return; }
+
+  drawBackground();
+
+  ctx.drawImage(logoSmall,W/2-20,10,40,40);
+
+  platforms.forEach(drawPlatform);
+  beers.forEach(drawBeer);
+  drawParticles();
+  drawPlayer();
+
+  ctx.fillStyle="#fff";
+  ctx.font="20px sans-serif";
+  ctx.textAlign="left";
+  ctx.fillText("🍺 "+score,12,28);
+
+  if(gameState===STATE.OVER){
+    ctx.fillStyle="rgba(0,0,0,0.75)";
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle="#ffbe0b";
+    ctx.font="36px sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText("GAME OVER",W/2,H/2-60);
+
+    ctx.fillStyle="#fff";
+    ctx.font="22px sans-serif";
+    ctx.fillText("Tasso Alcolico",W/2,H/2-15);
+
+    ctx.font="26px sans-serif";
+    ctx.fillText(score,W/2,H/2+20);
+
+    ctx.font="16px sans-serif";
+    ctx.fillText("Tocca per riprovare",W/2,H/2+70);
+  }
+}
+
+// ───── LOOP ─────
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ───── TOUCH ─────
+canvas.addEventListener("touchstart",e=>{
+  if(gameState!==STATE.PLAY){
+    resetGame();
+    return;
+  }
+  const rect=canvas.getBoundingClientRect();
+  const x=e.touches[0].clientX-rect.left;
+  dragging=true;
+  dragOffsetX=x-player.x;
+});
+
+canvas.addEventListener("touchmove",e=>{
+  if(!dragging||gameState!==STATE.PLAY) return;
+  const rect=canvas.getBoundingClientRect();
+  const prevX=player.x;
+
+  player.x=e.touches[0].clientX-rect.left-dragOffsetX;
+  player.x=Math.max(player.w/2,Math.min(W-player.w/2,player.x));
+
+  if(player.x<prevX) player.dir=-1;
+  if(player.x>prevX) player.dir=1;
+});
+
+canvas.addEventListener("touchend",()=>dragging=false);
+
+canvas.addEventListener("touchstart", e => {
+
+  const bgMusic = document.getElementById("bgMusic");
+  if (bgMusic.paused) {
+    bgMusic.volume = 0.3;
+    bgMusic.play().catch(() => {});
+  }
+
+  if (gameState !== STATE.PLAY) {
+    resetGame();
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = e.touches[0].clientX - rect.left;
+  dragging = true;
+  dragOffsetX = x - player.x;
+});
+
+</script>
+
+</body>
+</html>
