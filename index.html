@@ -410,17 +410,39 @@ canvas.addEventListener("touchstart", e => {
   dragOffsetX = x - player.x;
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
+function pauseMusic() {
+  if (!music.paused) {
     music.pause();
-  } else {
+  }
+}
+
+function resumeMusic() {
+  if (gameState === STATE.PLAY && music.paused) {
     music.play().catch(()=>{});
   }
+}
+
+/* Desktop + Android */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    pauseMusic();
+  } else {
+    resumeMusic();
+  }
 });
+
+/* iOS Safari (fondamentali) */
+window.addEventListener("pagehide", pauseMusic);
+window.addEventListener("blur", pauseMusic);
+
+window.addEventListener("pageshow", resumeMusic);
+window.addEventListener("focus", resumeMusic);
+
 
   
 </script>
 
 </body>
 </html>
+
 
