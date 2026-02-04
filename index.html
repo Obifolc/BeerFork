@@ -410,7 +410,17 @@ canvas.addEventListener("touchstart", e => {
   dragOffsetX = x - player.x;
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    music.pause();
+  } else {
+    music.play().catch(()=>{});
+  }
+});
+
+  
 </script>
 
 </body>
 </html>
+
