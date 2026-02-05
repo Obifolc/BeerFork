@@ -94,6 +94,8 @@ logoSmall.src = "logobeerfork.png";
 // ───── PLAYER SPRITE ─────
 const playerImg = new Image();
 playerImg.src = "pg.png";
+  const gameOverImg = new Image();
+gameOverImg.src = "pg2.png";
 
 // ───── BEER SPRITE ─────
 const beerImg = new Image();
@@ -433,8 +435,7 @@ function update(){
   gameOverSound.play().catch(()=>{});
 }
 }
-const gameOverImg = new Image();
-gameOverImg.src = "pg2.png"; 
+ 
 
 // ───── DRAW ─────
 function draw(){
@@ -533,3 +534,4 @@ canvas.addEventListener("touchend",()=>dragging=false);
 
 </body>
 </html>
+
